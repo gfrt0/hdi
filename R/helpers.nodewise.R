@@ -30,7 +30,7 @@ score.nodewiselasso <- function(x,
            "linear"   = nodewise.getlambdasequence.old(x,verbose),
            ## otherwise
            stop("invalid 'lambdaseq': ", lambdaseq))
-  
+
   if(verbose){
     cat("Using the following lambda values:", lambdas, "\n")
   }
@@ -45,7 +45,7 @@ score.nodewiselasso <- function(x,
     cat(paste("lambda.min is", cvlambdas$lambda.min), "\n")
     cat(paste("lambda.1se is", cvlambdas$lambda.1se), "\n")
   }
-  
+
   if(lambdatuningfactor == "lambda.1se"){
     if(verbose)
       cat("lambda.1se used for nodewise tuning\n")
@@ -54,10 +54,10 @@ score.nodewiselasso <- function(x,
     }else{
       if(verbose)
         cat("lambdatuningfactor used is", lambdatuningfactor, "\n")
-      
+
       bestlambda <- cvlambdas$lambda.min * lambdatuningfactor
     }
-  
+
   if(verbose){
     cat("Picked the best lambda:", bestlambda, "\n")
     ##print("with the error ")
@@ -98,7 +98,7 @@ score.getThetaforlambda <- function(x, lambda, parallel = FALSE, ncores = 8,
   p <- ncol(x)
   C <- diag(rep(1,p))
   T2 <- numeric(p)
-  
+
   if(oldschool){
     message("doing getThetaforlambda oldschool")
     for(i in 1:p){
@@ -106,14 +106,14 @@ score.getThetaforlambda <- function(x, lambda, parallel = FALSE, ncores = 8,
       coeffs <- as.vector(predict(glmnetfit,x[,-i], type = "coefficients",
                                   s = lambda))[-1]
       ## we just leave out the intercept
-      
+
       C[-i,i] <- -as.vector(coeffs)
       if(oldtausq){
         ## possibly quite incorrect,it ignores the intercept, but intercept is
         ## small anyways. Initial simulations show little difference.
         T2[i] <- as.numeric(crossprod(x[,i]) / n - x[,i] %*% (x[,-i] %*%
                                                               coeffs) / n)
-        }else{   
+        }else{
           ##print("now doing the new way of calculating tau^2")
           T2[i] <- as.numeric((x[,i] %*%
                                (x[,i] - predict(glmnetfit,x[,-i],s =lambda)))/n)
@@ -128,11 +128,11 @@ score.getThetaforlambda <- function(x, lambda, parallel = FALSE, ncores = 8,
   }
   ##this is thetahat ^ T!!
   thetahat <- t(thetahat)
-  
+
   if(all(thetahat[lower.tri(thetahat)] == 0,
          thetahat[upper.tri(thetahat)] == 0) && verbose)
     cat("Thetahat is a diagonal matrix!\n")
-  
+
   return(thetahat)
 }
 
@@ -146,11 +146,11 @@ score.getZforlambda <- function(x, lambda, parallel = FALSE, ncores = 8,
   ## Arguments:
   ## ----------------------------------------------------------------------
   ## Author: Ruben Dezeure, Date: 27 Nov 2012 (initial version)
-    
+
   n <- nrow(x)
   p <- ncol(x)
   Z <- matrix(numeric(n*p),n)
-  
+
   if(oldschool){
     message("doing getZforlambda oldschool")
     for(i in 1:p){
@@ -163,7 +163,7 @@ score.getZforlambda <- function(x, lambda, parallel = FALSE, ncores = 8,
     if(parallel){
       Z <- mcmapply(score.getZforlambda.unitfunction, i = 1:p, x = list(x = x),
                     lambda = lambda, mc.cores = ncores)
-      
+
     }else{
       Z <- mapply(score.getZforlambda.unitfunction, i = 1:p, x = list(x = x),
                   lambda = lambda)
@@ -212,15 +212,15 @@ nodewise.getlambdasequence <- function(x)
   ## Arguments:
   ## ----------------------------------------------------------------------
   ## Author: Ruben Dezeure, Date: 27 Nov 2012 (initial version),
-  
+
   nlambda <- 100 ## use the same value as the glmnet default
   p <- ncol(x)
-  
-  lambdas <- c()
-  for(c in 1:p){
-    lambdas <- c(lambdas,glmnet(x[,-c],x[,c])$lambda)
+
+  lambdas <- rep(0,nlambda*p)
+  for(c in 1:p){ # preallocating and filling is much faster than the code in hdi
+    lambdas[(100*(c-1) + 1):(100*c)] <- glmnet(x[,-c],x[,c])$lambda
   }
-  
+
   lambdas <- quantile(lambdas, probs = seq(0, 1, length.out = nlambda))
   lambdas <- sort(lambdas, decreasing = TRUE)
   return(lambdas)
@@ -236,7 +236,7 @@ cv.nodewise.err.unitfunction <- function(c, K, dataselects, x, lambdas,
   ## Arguments:
   ## ----------------------------------------------------------------------
   ## Author: Ruben Dezeure, Date: 27 Nov 2012 (initial version),
-  
+
   if(verbose){ ##print some information out about the progress
       ##report every 25%
     interesting.points <- round(c(1/4,2/4,3/4,4/4)*p)
@@ -247,8 +247,8 @@ cv.nodewise.err.unitfunction <- function(c, K, dataselects, x, lambdas,
           "done\n")
     }
   }
-  
-  ## return  'totalerr' 
+
+  ## return  'totalerr'
   cv.nodewise.totalerr(c = c,
                        K = K,
                        dataselects = dataselects,
@@ -260,7 +260,7 @@ cv.nodewise.err.unitfunction <- function(c, K, dataselects, x, lambdas,
 cv.nodewise.stderr <- function(K, x, dataselects, lambda, parallel, ncores)
 {
   ## Purpose:
-  ## this method returns the standard error 
+  ## this method returns the standard error
   ## of the average K-fold cv error made by the nodewise regression
   ## of each column vs the other columns for a single lambda value.
   ## ----------------------------------------------------------------------
@@ -286,7 +286,7 @@ cv.nodewise.stderr <- function(K, x, dataselects, lambda, parallel, ncores)
   }
   ## get the mean over the variables
   totalerr.varmean <- rowMeans(totalerr)
-  
+
   ## get the stderror over the K;  return stderr.forlambda
   sd(totalerr.varmean) / sqrt(K)
 }
@@ -303,10 +303,10 @@ cv.nodewise.totalerr <- function(c, K, dataselects, x, lambdas)
   ## Author: Ruben Dezeure, Date: 27 Nov 2012 (initial version),
 
   totalerr <- matrix(nrow = length(lambdas), ncol = K)
-  
+
   for(i in 1:K){ ## loop over the test sets
     whichj <- dataselects == i ##the test part of the data
-    
+
     glmnetfit <- glmnet(x = x[!whichj,-c, drop = FALSE],
                         y = x[!whichj, c, drop = FALSE],
                         lambda = lambdas)
@@ -338,17 +338,17 @@ cv.nodewise.bestlambda <- function(lambdas, x, K = 10, parallel = FALSE,
   n <- nrow(x)
   p <- ncol(x)
   l <- length(lambdas)
-  
+
   ## Based on code from cv.glmnet for sampling the data
   dataselects <- sample(rep(1:K, length = n))
-  
+
   if(oldschool){
     message("doing cv.nodewise.error oldschool")
     totalerr <- numeric(l)
     for(c in 1:p){ ## loop over the nodewise regressions
       for(i in 1:K){ ## loop over the test sets
         whichj <- dataselects == i ## the test part of the data
-        
+
         glmnetfit <- glmnet(x[!whichj,-c,drop=FALSE], x[!whichj,c,drop=FALSE],
                             lambda=lambdas)
         predictions <- predict(glmnetfit,x[whichj, -c, drop = FALSE],
@@ -362,7 +362,7 @@ cv.nodewise.bestlambda <- function(lambdas, x, K = 10, parallel = FALSE,
     ## REPLACING THE FOR LOOP
 
     ##totalerr <- matrix(nrow = l, ncol = p)
-    
+
     if(parallel){
       totalerr <- mcmapply(cv.nodewise.err.unitfunction,
                            c = 1:p,
@@ -426,10 +426,10 @@ nodewise.getlambdasequence.old <- function(x,verbose=FALSE)
   p <- ncol(x)
   maxlambda <- 0
   minlambda <- 100
-  
+
   for(c in 1:p){
     lambdas <- glmnet(x[,-c],x[,c])$lambda
-    
+
       ##DEBUG
     if(verbose || is.nan(max(lambdas))){
       cat(paste("c:", c, "\n"))
@@ -444,7 +444,7 @@ nodewise.getlambdasequence.old <- function(x,verbose=FALSE)
       minlambda <- min(lambdas, na.rm = TRUE)
     }
   }
-  
+
   lambdas <- seq(minlambda, maxlambda, by = (maxlambda-minlambda)/nlambda)
   ## return
   sort(lambdas, decreasing=TRUE)
