@@ -226,36 +226,6 @@ nodewise.getlambdasequence <- function(x)
   return(lambdas)
 }
 
-cv.nodewise.err.unitfunction <- function(c, K, dataselects, x, lambdas,
-                                         verbose, p) {
-  ## Purpose:
-  ## this method returns the K-fold cv error made by the nodewise regression
-  ## of the single column c of x vs the other columns for all values of the
-  ## tuning parameters in lambdas.
-  ## ----------------------------------------------------------------------
-  ## Arguments:
-  ## ----------------------------------------------------------------------
-  ## Author: Ruben Dezeure, Date: 27 Nov 2012 (initial version),
-
-  if(verbose){ ##print some information out about the progress
-      ##report every 25%
-    interesting.points <- round(c(1/4,2/4,3/4,4/4)*p)
-    names(interesting.points) <- c("25%","50%","75%","100%")
-    if(c %in% interesting.points){
-      cat("The expensive computation is now",
-          names(interesting.points)[c == interesting.points],
-          "done\n")
-    }
-  }
-
-  ## return  'totalerr'
-  cv.nodewise.totalerr(c = c,
-                       K = K,
-                       dataselects = dataselects,
-                       x = x,
-                       lambdas = lambdas)
-}
-
 ## gets the standard error for one particular lambda
 cv.nodewise.stderr <- function(K, x, dataselects, lambda, parallel, ncores)
 {
@@ -291,8 +261,7 @@ cv.nodewise.stderr <- function(K, x, dataselects, lambda, parallel, ncores)
   sd(totalerr.varmean) / sqrt(K)
 }
 
-cv.nodewise.totalerr <- function(c, K, dataselects, x, lambdas)
-{
+cv.nodewise.totalerr <- function(c, K, dataselects, x, lambdas, p = p) {
   ## Purpose:
   ## this method returns the error made for each fold of a K-fold cv
   ## of the nodewise regression of the single column c of x vs the other
@@ -301,23 +270,28 @@ cv.nodewise.totalerr <- function(c, K, dataselects, x, lambdas)
   ## Arguments:
   ## ----------------------------------------------------------------------
   ## Author: Ruben Dezeure, Date: 27 Nov 2012 (initial version),
-
+  if (verbose) {
+  interesting.points <- round(c(1/4,2/4,3/4,4/4)*p)
+  names(interesting.points) <- c("25%","50%","75%","100%")
+  if(c %in% interesting.points){
+    cat("The expensive computation is now",
+        names(interesting.points)[c == interesting.points],
+        "done\n")
+    }
+  }  
   totalerr <- matrix(nrow = length(lambdas), ncol = K)
 
-  for(i in 1:K){ ## loop over the test sets
-    whichj <- dataselects == i ##the test part of the data
+  for(i in 1:K){ # loop over the number of CV folds
+    whichj <- dataselects == i # select hold-out subsample (hold-out as !whichj)
 
-    glmnetfit <- glmnet(x = x[!whichj,-c, drop = FALSE],
-                        y = x[!whichj, c, drop = FALSE],
+    glmnetfit <- glmnet(x = x[!whichj,-c, drop = FALSE], # -c = indep vars in ndws reg
+                        y = x[!whichj, c, drop = FALSE], # c  = dep var in ndws reg
                         lambda = lambdas)
-    predictions  <- predict(glmnetfit, newx = x[whichj, -c, drop = FALSE],
-                            s = lambdas)
+    predictions   <- predict(glmnetfit, newx = x[whichj, -c, drop = FALSE], s = lambdas)
     totalerr[, i] <- apply((x[whichj, c] - predictions)^2, 2, mean)
   }
-
-  totalerr
+  return(totalerr)
 }
-
 
 cv.nodewise.bestlambda <- function(lambdas, x, K = 10, parallel = FALSE,
                                    ncores = 8, oldschool = FALSE,
@@ -364,7 +338,7 @@ cv.nodewise.bestlambda <- function(lambdas, x, K = 10, parallel = FALSE,
     ##totalerr <- matrix(nrow = l, ncol = p)
 
     if(parallel){
-      totalerr <- mcmapply(cv.nodewise.err.unitfunction,
+      totalerr <- mcmapply(cv.nodewise.totalerr,
                            c = 1:p,
                            K = K,
                            dataselects = list(dataselects = dataselects),
@@ -375,7 +349,7 @@ cv.nodewise.bestlambda <- function(lambdas, x, K = 10, parallel = FALSE,
                            verbose = verbose,
                            p=p)
     }else{
-      totalerr <- mapply(cv.nodewise.err.unitfunction,
+      totalerr <- mapply(cv.nodewise.err.totalerr,
                          c = 1:p,
                          K = K,
                          dataselects = list(dataselects = dataselects),
