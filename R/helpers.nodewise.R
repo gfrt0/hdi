@@ -201,26 +201,40 @@ score.rescale <- function(Z, x)
   return(list(Z=Z,scaleZ=scaleZ))
 }
 
-nodewise.getlambdasequence <- function(x)
+nodewise.getlambdasequence <- function(x, parallel = FALSE)
 {
   ## Purpose:
-  ## this method returns a lambdasequence for the nodewise regressions
-  ## by looking at the automatically selected lambda sequences
-  ## for each nodewise regression by glmnet.
+  ## base `hdi` runs glmnet on all columns against each other, get all λs,
+  ## orders them by size and gets 100 equidistant picks from the resulting distribution.
+  ## I get the lambdas without running glmnet, significant speed buff.
+
   ## Equidistant quantiles of the complete set of lambda values are returned.
   ## ----------------------------------------------------------------------
   ## Arguments:
   ## ----------------------------------------------------------------------
   ## Author: Ruben Dezeure, Date: 27 Nov 2012 (initial version),
+  ##         Giuseppe Forte, Date: 22 Mar 2019 (updated version)
 
   nlambda <- 100 ## use the same value as the glmnet default
   p <- ncol(x)
 
   lambdas <- rep(0,nlambda*p)
-  for(c in 1:p){ # preallocating and filling is much faster than the code in hdi
-    lambdas[(100*(c-1) + 1):(100*c)] <- glmnet(x[,-c],x[,c])$lambda
-  }
+  if (parallel) {registerDoParallel(cl)}
+  lambdas <- foreach (c = 1:p, .combine = c, .multicombine = TRUE) %dopar% {
+          # Code from https://bit.ly/2TOBWVL.
+         sdL <- function(y) sqrt(sum((y-mean(y))^2)/length(y))
+         sx  <- scale(x[,-c], scale = apply(x[,-c], 2, sdL))
+         sx  <- as.matrix(sx, nrow = n)
+         sy  <- as.vector(scale(x[,c], scale = sdL(x[,c])))
+         lambda_max <- max(abs(colSums(sx*sy)))/n; epsilon <- .0001
+         lambdapath <- round(exp(seq(log(lambda_max), log(lambda_max*epsilon),
+                                   length.out = nlambda)), digits = 10)
+         #lambdapath <- glmnet(x[,-c], x[,c])$lambda
+         #lambdapath <- c(lambdapath, rep(0, 100 - length(lambdapath)))
+      }
+  if (parallel) {registerDoSEQ()}
 
+  lambdas <- lambdas[lambdas>0]
   lambdas <- quantile(lambdas, probs = seq(0, 1, length.out = nlambda))
   lambdas <- sort(lambdas, decreasing = TRUE)
   return(lambdas)
@@ -278,7 +292,7 @@ cv.nodewise.totalerr <- function(c, K, dataselects, x, lambdas, p = p) {
         names(interesting.points)[c == interesting.points],
         "done\n")
     }
-  }  
+  }
   totalerr <- matrix(nrow = length(lambdas), ncol = K)
 
   for(i in 1:K){ # loop over the number of CV folds
